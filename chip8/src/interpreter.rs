@@ -182,6 +182,25 @@ fn subtract_xy(state: &mut State, reg_x: Register, reg_y: Register) {
     state.registers[reg_x] = u8::wrapping_sub(state.registers[reg_x], state.registers[reg_y]);
 }
 
+fn shift_right(state: &mut State, reg: Register) {
+    state.registers[15] = state.registers[reg] & 1;
+    state.registers[reg] >>= 1;
+}
+
+fn subtract_yx(state: &mut State, reg_x: Register, reg_y: Register) {
+    state.registers[15] = if state.registers[reg_y] > state.registers[reg_x] {
+        1
+    } else {
+        0
+    };
+    state.registers[reg_x] = u8::wrapping_sub(state.registers[reg_y], state.registers[reg_x]);
+}
+
+fn shift_left(state: &mut State, reg: Register) {
+    state.registers[15] = (state.registers[reg] & 0b10000000) >> 7;
+    state.registers[reg] <<= 1;
+}
+
 pub fn exec(state: &mut State, operation: Operation) {
     match operation {
         Operation::Clear => clear(state),
@@ -199,6 +218,9 @@ pub fn exec(state: &mut State, operation: Operation) {
         Operation::Xor(reg_x, reg_y) => xor(state, reg_x, reg_y),
         Operation::Add(reg_x, reg_y) => add(state, reg_x, reg_y),
         Operation::SubtractXY(reg_x, reg_y) => subtract_xy(state, reg_x, reg_y),
+        Operation::ShiftRight(reg) => shift_right(state, reg),
+        Operation::SubtractYX(reg_x, reg_y) => subtract_yx(state, reg_x, reg_y),
+        Operation::ShiftLeft(reg) => shift_left(state, reg),
         _ => panic!("Unimplemented!"),
     }
 }
@@ -445,5 +467,46 @@ mod tests {
         exec(&mut state, SubtractXY(register_x, register_y));
         assert_eq!(state.registers[register_x], 1);
         assert_eq!(state.registers[15], 1);
+    }
+
+    #[test]
+    fn test_shift_right() {
+        let mut state = Faker.fake::<State>();
+        let register = (0..15).fake::<usize>();
+
+        let register_val = state.registers[register];
+        exec(&mut state, ShiftRight(register));
+        assert_eq!(state.registers[15], register_val & 1);
+        assert_eq!(state.registers[register], register_val >> 1);
+    }
+
+    #[test]
+    fn test_subtract_yx() {
+        let mut state = Faker.fake::<State>();
+        let register_x = (0..8).fake::<usize>();
+        let register_y = (8..15).fake::<usize>();
+
+        state.registers[register_x] = 1;
+        state.registers[register_y] = 0;
+        exec(&mut state, SubtractYX(register_x, register_y));
+        assert_eq!(state.registers[register_x], 0xff);
+        assert_eq!(state.registers[15], 0);
+
+        state.registers[register_x] = 1;
+        state.registers[register_y] = 2;
+        exec(&mut state, SubtractYX(register_x, register_y));
+        assert_eq!(state.registers[register_x], 1);
+        assert_eq!(state.registers[15], 1);
+    }
+
+    #[test]
+    fn test_shift_left() {
+        let mut state = Faker.fake::<State>();
+        let register = (0..15).fake::<usize>();
+
+        let register_val = state.registers[register];
+        exec(&mut state, ShiftLeft(register));
+        assert_eq!(state.registers[15], (register_val & 0b10000000) >> 7);
+        assert_eq!(state.registers[register], register_val << 1);
     }
 }
