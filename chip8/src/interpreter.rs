@@ -1,11 +1,11 @@
 use fake::{Dummy, Fake, Faker};
-use rand::Rng;
+use rand::{random as rand_random, Rng};
 
 type Register = usize;
-type Address = u16;
+type Address = usize;
 type Constant = u8;
 
-const INITIAL_ADDRESS: u16 = 0x200;
+const INITIAL_ADDRESS: usize = 0x200;
 const MEMORY_SIZE: usize = 4096;
 const SCREEN_SIZE: usize = 64 * 32;
 
@@ -13,9 +13,9 @@ const SCREEN_SIZE: usize = 64 * 32;
 pub struct State {
     registers: [u8; 16],
     memory: [u8; MEMORY_SIZE],
-    index: u16,
-    pc: u16,
-    stack: [u16; 16],
+    index: usize,
+    pc: usize,
+    stack: [usize; 16],
     sp: usize,
     delay_timer: u8,
     sound_timer: u8,
@@ -201,6 +201,24 @@ fn shift_left(state: &mut State, reg: Register) {
     state.registers[reg] <<= 1;
 }
 
+fn skip_not_equal(state: &mut State, reg_x: Register, reg_y: Register) {
+    if state.registers[reg_x] != state.registers[reg_y] {
+        state.pc += 2;
+    }
+}
+
+fn load_index(state: &mut State, addr: Address) {
+    state.index = addr;
+}
+
+fn jump_register(state: &mut State, addr: Address) {
+    state.index = addr + usize::from(state.registers[0]);
+}
+
+fn random(state: &mut State, reg: Register, c: Constant) {
+    state.registers[reg] = rand_random::<u8>() & c;
+}
+
 pub fn exec(state: &mut State, operation: Operation) {
     match operation {
         Operation::Clear => clear(state),
@@ -221,6 +239,10 @@ pub fn exec(state: &mut State, operation: Operation) {
         Operation::ShiftRight(reg) => shift_right(state, reg),
         Operation::SubtractYX(reg_x, reg_y) => subtract_yx(state, reg_x, reg_y),
         Operation::ShiftLeft(reg) => shift_left(state, reg),
+        Operation::SkipNE(reg_x, reg_y) => skip_not_equal(state, reg_x, reg_y),
+        Operation::LoadIndex(addr) => load_index(state, addr),
+        Operation::JumpRegister(addr) => jump_register(state, addr),
+        Operation::Random(reg, c) => random(state, reg, c),
         _ => panic!("Unimplemented!"),
     }
 }
@@ -508,5 +530,37 @@ mod tests {
         exec(&mut state, ShiftLeft(register));
         assert_eq!(state.registers[15], (register_val & 0b10000000) >> 7);
         assert_eq!(state.registers[register], register_val << 1);
+    }
+
+    #[test]
+    fn test_skip_not_equal() {
+        let mut state = Faker.fake::<State>();
+        let pc = state.pc;
+        let register_x = (0..8).fake();
+        let register_y = (8..16).fake();
+        let register_val = (0..0xff).fake();
+        state.registers[register_x] = register_val;
+        state.registers[register_y] = register_val;
+        exec(&mut state, SkipNE(register_x, register_y));
+        assert_eq!(pc, state.pc);
+        state.registers[register_y] = register_val + 1;
+        exec(&mut state, SkipNE(register_x, register_y));
+        assert_eq!(pc + 2, state.pc);
+    }
+
+    #[test]
+    fn test_load_index() {
+        let mut state = Faker.fake::<State>();
+        let addr = (0..MEMORY_SIZE).fake::<usize>();
+        exec(&mut state, LoadIndex(addr));
+        assert_eq!(state.index, addr);
+    }
+
+    #[test]
+    fn test_jump_register() {
+        let mut state = Faker.fake::<State>();
+        let addr = (0..MEMORY_SIZE).fake::<usize>();
+        exec(&mut state, JumpRegister(addr));
+        assert_eq!(state.index, addr + usize::from(state.registers[0]));
     }
 }
